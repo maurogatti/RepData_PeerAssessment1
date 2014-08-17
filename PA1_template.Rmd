@@ -1,20 +1,162 @@
-# Reproducible Research: Peer Assessment 1
+---
+title: "Reproducible Research. Assignment 1"
+author: "Mauro Gatti"
+date: "Sunday, August 17, 2014"
+output: html_document
+---
+
+*Summary
+This document provides a concise analysis of the Activity monitoring data set
+
+*Prerequisites
+The activity.csv file that will be analized has to be available. You will need to modify the path of the directory in the setwd command below according to your file system structure. The next commands reads the file data.
+
+```{r}
+#Work directory
+setwd("C:\\User\\Courses\\ReproducibleResearch\\MyAssignments\\Assignment1")
+
+#Read data
+fileName<-"activity.csv"
+columnNames<-c("steps", "date","interval")
+data<-read.table(fileName,sep=",",stringsAsFactor=FALSE,header=TRUE,
+               na.strings=c("NA", " "),col.names=columnNames)
+```
+
+The next block of instructions reorganizes the datasets. They are not strictly required.
+
+```{r,echo=TRUE}
+#Create steps dataset
+stepsByTimeData<-data.frame(data$date,data$steps)
+colnames(stepsByTimeData)<-c("date","steps")
+stepsByIntervalData<-data.frame(data$interval,data$steps)
+colnames(stepsByIntervalData)<-c("interval","steps")
+stepsByTimeNotNullBinaryData<-!is.na(stepsByTimeData$steps)
+stepsByTimeNotNullData<-stepsByTimeData$steps[stepsByTimeNotNullBinaryData]
+stepsByIntervalNotNullBinaryData<-!is.na(stepsByIntervalData$steps)
+stepsByIntervalNotNullData<-stepsByIntervalData$steps[stepsByIntervalNotNullBinaryData]
+```
+
+The next plot shows the distribution of steps by day:
+
+```{r, echo=TRUE}
+#Aggregate steps by day
+library(zoo)
+statsum <- function(x) c(sum=sum(x,na.RM=TRUE))
+stepsByTimeSum <- read.zoo(stepsByTimeData, header = TRUE, sep = ",", format="%Y-%m-%d", aggregate = statsum)
+
+#Histogram of total steps per day
+bp<-barplot(stepsByTimeSum, main="Total daily steps",xlab="Day",ylab="Total number of steps",horiz=FALSE,axes=FALSE,axisnames=FALSE)
+axis(2,cex.axis=0.8)
+text(bp, par("usr")[3], labels = format(index(stepsByTimeSum), format="%b %d"), srt = 90, adj = 1, xpd = TRUE,cex=0.8)
+
+```
+
+Similar instructions can be used to see the mean and median:
 
 
-## Loading and preprocessing the data
+```{r, echo=TRUE}
+#Average number of steps by day
+library(zoo)
+statmean <- function(x) c(mean = mean(x,na.rm=TRUE))
+stepsByTimeMean <- read.zoo(stepsByTimeData, header = TRUE, sep = ",", format="%Y-%m-%d", aggregate = statmean)
 
+#Histogram of average steps per day
+bp<-barplot(stepsByTimeMean, main="Average daily steps",xlab="Day",ylab="Average number of steps",horiz=FALSE,axes=FALSE,axisnames=FALSE)
+axis(2,cex.axis=0.8)
+text(bp, par("usr")[3], labels = format(index(stepsByTimeMean), format="%b %d"), srt = 90, adj = 1, xpd = TRUE,cex=0.8)
 
+#Median of daily steps 
+library(zoo)
+statmedian <- function(x) c(median = median(coredata(x),na.rm=TRUE))
+stepsByTimeMedian <- read.zoo(stepsByTimeData, header = TRUE, sep = ",", format="%Y-%m-%d", aggregate = statmedian)
 
-## What is mean total number of steps taken per day?
+#Histogram of median steps per day
+bp<-barplot(stepsByTimeMedian, main="Median daily steps",xlab="Day",ylab="Median number of steps",horiz=FALSE,axes=FALSE,axisnames=FALSE)
+axis(2,cex.axis=0.8)
+text(bp, par("usr")[3], labels = format(index(stepsByTimeMedian), format="%b %d"), srt = 90, adj = 1, xpd = TRUE,cex=0.8)
+```
 
+Rather than using the day we can use the 5-minute interval and we obtain the following barplot:
 
+```{r, echo=TRUE}
+#Aggregate data by 5-minute interval
+library(zoo)
+statmean <- function(x) c(mean = mean(x,na.rm=TRUE))
+stepsByIntervalMean <- read.zoo(stepsByIntervalData, header = TRUE, sep = ",",  aggregate = statmean)
 
-## What is the average daily activity pattern?
+#Histogram of average steps per day
+barplot(stepsByIntervalMean, main="Average steps by interval",xlab="Time interval",ylab="Average steps by interval",horiz=FALSE)
 
+```
 
+We can easily identify the maximum point as follows:
 
-## Imputing missing values
+```{r, echo=TRUE}
+#Maximum interval
+maxIntervalPosition<-which.max(stepsByIntervalMean)
+stepsByIntervalMean[maxIntervalPosition]
+```
 
+The dataset contains several null values. The exact number can be obtained with the following command:
 
+```{r, echo=TRUE}
+#Number of rows with missing values
+sum(is.na(data))
+sum(is.na(data$steps)) #All missing values are in the steps column
+```
 
-## Are there differences in activity patterns between weekdays and weekends?
+We want to replace the NA values with something meaningful and we decide to replace it with the average of the not NA values surroung the NA value. For such a purpose we use the following function:
+
+```{r, echo=TRUE}
+#Cleans missing values by using local average of not null data
+cleanMissingValues = function(x,k) {   
+        ind = which(is.na(x)) 
+        for(i in ind){
+                if(i-k>0 & i+k<length(x)){
+                        x[i]<-mean(x[seq(i-k,i+k,1)],na.rm=TRUE)
+                }
+                else if(i-k<=0 & i+k<length(x))
+                {
+                        x[i]<-mean(x[seq(0,i+k+1,1)],na.rm=TRUE) 
+                }
+                else if(i-k>0 & i+k>=length(x))
+                {
+                        x[i]<-mean(x[seq(i-k,length(x),1)],na.rm=TRUE) 
+                }
+                else if(i-k<=0 & i+k>=length(x))
+                {
+                        x[i]<-mean(x[seq(0,length(x),1)],na.rm=TRUE) 
+                }
+                else
+                {
+                        x[i]<-mean(x[seq(0,length(x),1)],na.rm=TRUE)   
+                }
+        }
+        x[!ind]<-x
+        return (x)
+}
+```
+
+Using this function we obtain the 'clean' dataset as follows:
+
+```{r, echo=TRUE}
+#Cleaned data set
+cleanData<-data
+cleanData$steps = cleanMissingValues(data$steps,10)
+stepsByTimeDataClean<-data.frame(data$date,data$steps)
+colnames(stepsByTimeDataClean)<-c("date","steps")
+```
+
+Next is the histogram of cleaned data:
+```{r, echo=TRUE}
+#Average number of steps by day
+library(zoo)
+statmean <- function(x) c(mean = mean(x,na.rm=TRUE))
+stepsByTimeMeanClean <- read.zoo(stepsByTimeDataClean, header = TRUE, sep = ",", format="%Y-%m-%d", aggregate = statmean)
+
+#Histogram of average steps per day
+bp<-barplot(stepsByTimeMeanClean, main="Average daily steps",xlab="Day",ylab="Average number of steps",horiz=FALSE,axes=FALSE,axisnames=FALSE)
+axis(2,cex.axis=0.8)
+text(bp, par("usr")[3], labels = format(index(stepsByTimeMeanClean), format="%b %d"), srt = 90, adj = 1, xpd = TRUE,cex=0.8)
+
+```
